@@ -1,0 +1,32 @@
+{
+  "tsflow": {
+    "kdd_cup_2018_without_missing": {
+      "crps": 31.671456513913665,
+      "twCRPS_q090": 5.79718929273523,
+      "twCRPS_q090_threshold": 101.5,
+      "twCRPS_q090_threshold_src": "train",
+      "brier_q090": 0.12168842592592592,
+      "twCRPS_q095": 2.6659422539148214,
+      "twCRPS_q095_threshold": 143.0,
+      "twCRPS_q095_threshold_src": "train",
+      "brier_q095": 0.04491393518518519,
+      "twCRPS_q099": 0.8502835614084315,
+      "twCRPS_q099_threshold": 257.0,
+      "twCRPS_q099_threshold_src": "train",
+      "brier_q099": 0.003207901234567901,
+      "qloss_q090": 22.314402863828143,
+      "wqloss_q090": 0.9462775479366371,
+      "qloss_q095": 19.86253514533242,
+      "wqloss_q095": 0.8423022192360824,
+      "qloss_q099": 14.884792451418637,
+      "wqloss_q099": 0.6312131670485499,
+      "winkler_90": 443.74520835239014,
+      "coverage_90": 0.2636574074074074,
+      "winkler_95": 741.7541650883179,
+      "coverage_95": 0.355787037037037,
+      "winkler_99": 2688.3242392729444,
+      "coverage_99": 0.49151234567901236,
+      "gluonts_mean_wQuantileLoss": 0.7097234249366093
+    }
+  }
+}
