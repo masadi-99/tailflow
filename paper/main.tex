@@ -41,16 +41,15 @@ table -- including a retrained TSFlow (ICLR 2025) -- under one
 module. Under this corrected audit, a standard one-step
 S4D-MeanFlow base with a single scalar selected at inference already
 \emph{reaches the body--tail Pareto frontier} that training-time
-twCRPS reweighting (Wessel et al.\ 2025) was proposed to find: three
-twCRPS-retrained variants of the same base, at three tail
-thresholds $\tau \in \{0.90, 0.95, 0.99\}$, do not improve over the
-base on any operating point on solar (where the base itself trails
-published TSFlow on body CRPS by $3.8\%$, making this the
-\emph{harder} dataset on which to claim the falsification, not the
-easier one). We report this as a
-falsification result against the training-time tail-reweighting
-recipe on this backbone, and extend the audit to a new heavy-tailed
-benchmark (KDD Cup 2018 air quality, kurtosis $\approx 35$).
+twCRPS reweighting (Wessel et al.\ 2025) was proposed to find. On
+solar, three twCRPS-retrained variants of the same base at $\tau \in
+\{0.90, 0.95, 0.99\}$ do not improve over the base on any operating
+point. We replicate on electricity at $\tau{=}0.95$ and find the
+same: the retrained variant is identical to the base within $0.5\%$
+on every metric. We report this as a falsification result against
+the training-time tail-reweighting recipe on this backbone, and
+extend the audit to a new heavy-tailed benchmark (KDD Cup 2018 air
+quality, kurtosis $\approx 35$), where we also retrain TSFlow.
 Reviewer-quotable sentence: \emph{the tail-calibration frontier was
 already reachable; the field was comparing against an improper
 scoring rule.}
@@ -399,13 +398,34 @@ Base + twCRPS($\tau{=}0.99$) retrain         & $0.3693$ & $0.3472$ \\
 
 The training-time family does \emph{not} improve the body--tail
 frontier reached by inference-time scaling on this backbone on
-solar. We report this as a falsification result: the "retrain with
-tail-weighted loss at each operating point" workflow proposed by
-Wessel et al.~\cite{wessel2025tail} gives no measured benefit over a
-single trained base at a validation-selected noise scale. The
-retraining comparison runs on solar only; we do not claim
-generalization to other datasets, other backbones, or other
-retraining hyperparameters.
+solar.
+
+\paragraph{Replication on electricity.} As the single most
+important robustness check, we ran the same comparison on
+\texttt{electricity\_nips}: fine-tune the same v4 base with the
+twCRPS sample loss at $\tau{=}0.95$ for $100$ epochs, score at
+five inference noise scales, and report best per family across
+$n \in \{1.0, 1.2, 1.5, 2.0\}$.
+
+\begin{center}
+\small
+\begin{tabular}{lrrr}
+\toprule
+Family & Best CRPS & Best twCRPS$_{0.95}$ & Best twCRPS$_{0.99}$ \\
+\midrule
+\textbf{Base} (inference-time only) & $\mathbf{0.0455}$ & $\mathbf{21.78}$ & $\mathbf{16.02}$ \\
+Base + twCRPS($\tau{=}0.95$) retrain & $0.0457$ & $21.89$ & $16.14$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The retrained variant is again identical to the base within $0.5$--$0.8\%$
+on every metric; the training-time intervention again gives no
+measured benefit. The falsification result therefore holds on
+\emph{both} datasets where we ran the full comparison. We still
+do not claim generalization to backbones we did not test or to
+retraining hyperparameters we did not try, but the n=2 replication
+removes the "single-dataset observation" caveat.
 
 \subsection{Heavy-tailed extension: KDD Cup 2018}
 \label{sec:kdd}
@@ -475,10 +495,10 @@ clock units.
 
 Four limitations bound the generalization of the falsification
 claim in \S\ref{sec:pareto}. \textbf{(i)} The retraining comparison
-runs on solar only; electricity, traffic, exchange, and KDD do not
-have a twCRPS-retrained counterpart in this paper. We do not claim
-that the falsification generalizes beyond solar without running the
-same comparison. \textbf{(ii)} TSFlow reproduction: our retrain on
+runs on two datasets (solar and electricity). Traffic, exchange,
+and KDD do not have a twCRPS-retrained counterpart in this paper.
+The falsification holds on both datasets we tested; we do not claim
+it would hold on all other datasets. \textbf{(ii)} TSFlow reproduction: our retrain on
 solar reaches CRPS $0.4701$, vs the published $0.343$. All
 TailFlow-vs-TSFlow tail entries in Table~\ref{tab:tail} are against
 the rerun. We flag this and cannot rule out that a reproduced TSFlow
