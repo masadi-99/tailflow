@@ -23,7 +23,7 @@ from gluonts.transform import (
 )
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from meanflow_ts.tail_metrics import compute_all_tail_metrics
+from meanflow_ts.tail_metrics import compute_all_tail_metrics, compute_train_thresholds
 
 logging.basicConfig(format="%(asctime)s | %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -93,6 +93,9 @@ def eval_baseline(name, method, num_samples=200, seed=0):
     pred_len = cfg["pred"]
     period = cfg["period"]
 
+    ds = get_dataset(name)
+    train_thr = compute_train_thresholds(ds.train, quantiles=(0.9, 0.95, 0.99))
+
     samples_list = []
     targets_list = []
     for past, future in iter_test_windows(name, cfg):
@@ -108,7 +111,7 @@ def eval_baseline(name, method, num_samples=200, seed=0):
     samples = np.stack(samples_list, axis=0)  # (N, S, T)
     targets = np.stack(targets_list, axis=0)  # (N, T)
     t0 = time.time()
-    m = compute_all_tail_metrics(samples, targets)
+    m = compute_all_tail_metrics(samples, targets, train_thresholds=train_thr)
     m["method"] = method
     m["num_windows"] = len(samples_list)
     logger.info(f"[{name}/{method}] N={len(samples_list)}  crps={m['crps']:.4f}  "

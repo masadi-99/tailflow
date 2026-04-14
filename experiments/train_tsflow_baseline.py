@@ -40,17 +40,19 @@ from tsflow.utils import create_transforms
 from tsflow.utils.util import create_splitter, ConcatDataset
 from tsflow.utils.variables import get_season_length
 
-from meanflow_ts.tail_metrics import compute_all_tail_metrics
+from meanflow_ts.tail_metrics import compute_all_tail_metrics, compute_train_thresholds
 
 logging.basicConfig(format="%(asctime)s | %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 DATASET_CONFIGS = {
-    "solar_nips":         {"freq": "H", "ctx": 24, "pred": 24},
-    "electricity_nips":   {"freq": "H", "ctx": 24, "pred": 24},
-    "traffic_nips":       {"freq": "H", "ctx": 24, "pred": 24},
-    "exchange_rate_nips": {"freq": "B", "ctx": 30, "pred": 30},
+    "solar_nips":                   {"freq": "H", "ctx": 24, "pred": 24},
+    "electricity_nips":             {"freq": "H", "ctx": 24, "pred": 24},
+    "traffic_nips":                 {"freq": "H", "ctx": 24, "pred": 24},
+    "exchange_rate_nips":           {"freq": "B", "ctx": 30, "pred": 30},
+    "kdd_cup_2018_without_missing": {"freq": "H", "ctx": 48, "pred": 48},
+    "uber_tlc_hourly":              {"freq": "H", "ctx": 48, "pred": 24},
 }
 
 
@@ -168,7 +170,8 @@ def train_and_evaluate(name: str, epochs: int, num_samples: int,
     # Pack samples for our tail metrics (N, S, T) / (N, T)
     samples = np.stack([f.samples for f in forecasts], axis=0).astype(np.float32)
     targets = np.stack([ts.values[-pred_len:].flatten() for ts in tss], axis=0).astype(np.float32)
-    tail_m = compute_all_tail_metrics(samples, targets)
+    train_thr = compute_train_thresholds(dataset.train, quantiles=(0.9, 0.95, 0.99))
+    tail_m = compute_all_tail_metrics(samples, targets, train_thresholds=train_thr)
     tail_m["gluonts_mean_wQuantileLoss"] = float(gluon_metrics["mean_wQuantileLoss"])
 
     # Save checkpoint + samples

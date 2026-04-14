@@ -150,24 +150,46 @@ def exceedance_brier(samples, target, threshold):
 
 
 def compute_all_tail_metrics(samples, target, thresholds=(0.9, 0.95, 0.99),
-                              quantiles=(0.9, 0.95, 0.99)):
+                              quantiles=(0.9, 0.95, 0.99),
+                              train_thresholds=None):
     """
-    Convenience wrapper. Thresholds are specified as MARGINAL QUANTILES
-    of the ground-truth distribution — we convert them to absolute values
-    internally from the target array.
+    Convenience wrapper.
+
+    Upper-tail chaining function `v(x) = max(x, t)` requires a *fixed*
+    threshold `t`. For propriety of the twCRPS scoring rule (Gneiting &
+    Ranjan 2011), the threshold must not depend on the evaluation target.
+    Supply `train_thresholds` as a dict {0.90: t1, 0.95: t2, 0.99: t3}
+    where each `ti` is the absolute threshold computed on the TRAINING
+    set at marginal quantile `i`. These are then used uniformly across
+    every test window.
+
+    Legacy fallback: if `train_thresholds` is not provided, thresholds
+    are estimated from the current `target` array. This is NOT strictly
+    proper and should be used only for quick exploration; production
+    numbers must pass `train_thresholds`.
 
     Returns a dict with:
       crps, twCRPS_q090, twCRPS_q095, twCRPS_q099,
       qloss_q090, qloss_q095, qloss_q099,
+      wqloss_q090, wqloss_q095, wqloss_q099,
       winkler_90, winkler_95, winkler_99,
       coverage_90, coverage_95, coverage_99,
       brier_q090, brier_q095, brier_q099.
+    Each twCRPS/brier entry also has a suffix `_threshold` giving the
+    absolute threshold used.
     """
     out = {"crps": crps_sample(samples, target)}
     y_flat = target.reshape(-1)
     for q in thresholds:
-        t = float(np.quantile(y_flat, q))
+        if train_thresholds is not None and q in train_thresholds:
+            t = float(train_thresholds[q])
+            src = "train"
+        else:
+            t = float(np.quantile(y_flat, q))
+            src = "test"  # legacy / improper
         out[f"twCRPS_q{int(q*100):03d}"] = tw_crps_sample(samples, target, t, side="upper")
+        out[f"twCRPS_q{int(q*100):03d}_threshold"] = t
+        out[f"twCRPS_q{int(q*100):03d}_threshold_src"] = src
         out[f"brier_q{int(q*100):03d}"] = exceedance_brier(samples, target, t)
     for q in quantiles:
         out[f"qloss_q{int(q*100):03d}"] = quantile_loss(samples, target, q)
@@ -176,3 +198,20 @@ def compute_all_tail_metrics(samples, target, thresholds=(0.9, 0.95, 0.99),
         out[f"winkler_{lvl}"] = winkler_score(samples, target, alpha)
         out[f"coverage_{lvl}"] = interval_coverage(samples, target, 1.0 - alpha)
     return out
+
+
+def compute_train_thresholds(dataset_train, quantiles=(0.9, 0.95, 0.99)):
+    """
+    Compute absolute thresholds on the training distribution for each
+    quantile level. Operates on the pooled flattened training-target
+    values — the same marginal we'd use if we had infinite training data.
+    This is the correct anchor for the Gneiting & Ranjan twCRPS chaining
+    function.
+    """
+    vals = []
+    for entry in dataset_train:
+        t = np.asarray(entry["target"], dtype=np.float32)
+        if t.ndim == 2: t = t[0]
+        vals.extend(t[np.isfinite(t)].tolist())
+    vals = np.asarray(vals, dtype=np.float64)
+    return {q: float(np.quantile(vals, q)) for q in quantiles}

@@ -29,7 +29,7 @@ from meanflow_ts.model_v4 import (
 from meanflow_ts.model_v4_tail import (
     ConditionedS4DMeanFlowNetV4, guided_sample_v4,
 )
-from meanflow_ts.tail_metrics import compute_all_tail_metrics
+from meanflow_ts.tail_metrics import compute_all_tail_metrics, compute_train_thresholds
 from experiments.train_v4 import CONFIGS, LAG_MAP
 
 logging.basicConfig(format="%(asctime)s | %(message)s", level=logging.INFO)
@@ -94,6 +94,7 @@ def run_sweep(name, ckpt_path, num_samples, tq, noise, w_grid, device):
     logger.info(f"[{name}] loaded {os.path.basename(ckpt_path)}  epoch={ck.get('epoch')}")
 
     dataset = get_dataset(name)
+    train_thr = compute_train_thresholds(dataset.train, quantiles=(0.9, 0.95, 0.99))
     tr = Chain([
         AsNumpyArray(field="target", expected_ndim=1),
         AddObservedValuesIndicator(target_field="target", output_field="observed_values"),
@@ -124,7 +125,7 @@ def run_sweep(name, ckpt_path, num_samples, tq, noise, w_grid, device):
         gluon, _ = Evaluator(num_workers=0)(tss, forecasts)
         samples = np.stack([f.samples for f in forecasts], axis=0).astype(np.float32)
         targets = np.stack([ts.values[-pred_len:].flatten() for ts in tss], axis=0).astype(np.float32)
-        m = compute_all_tail_metrics(samples, targets)
+        m = compute_all_tail_metrics(samples, targets, train_thresholds=train_thr)
         m["gluonts_mean_wQuantileLoss"] = float(gluon["mean_wQuantileLoss"])
         m["w"] = float(w)
         m["tq"] = float(tq)

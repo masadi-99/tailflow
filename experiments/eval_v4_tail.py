@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from meanflow_ts.model_v4 import (
     S4DMeanFlowNetV4, get_lag_indices_v4, extract_lags_v4, RobustNorm,
 )
-from meanflow_ts.tail_metrics import compute_all_tail_metrics
+from meanflow_ts.tail_metrics import compute_all_tail_metrics, compute_train_thresholds
 from experiments.train_v4 import CONFIGS, LAG_MAP
 
 logging.basicConfig(format="%(asctime)s | %(message)s", level=logging.INFO)
@@ -93,6 +93,11 @@ def evaluate(name, ckpt_path, num_samples=200, noise=1.0, clamp_min=None,
                 f"(reported_CRPS={ck.get('crps','?')})")
 
     dataset = get_dataset(name)
+    # Compute twCRPS thresholds from TRAINING target only — proper scoring
+    # requires a fixed chaining function independent of the test set.
+    train_thr = compute_train_thresholds(dataset.train, quantiles=(0.9, 0.95, 0.99))
+    logger.info(f"[{name}] train thresholds: "
+                f"q90={train_thr[0.9]:.3f} q95={train_thr[0.95]:.3f} q99={train_thr[0.99]:.3f}")
     tr = Chain([
         AsNumpyArray(field="target", expected_ndim=1),
         AddObservedValuesIndicator(target_field="target", output_field="observed_values"),
@@ -123,7 +128,7 @@ def evaluate(name, ckpt_path, num_samples=200, noise=1.0, clamp_min=None,
     gluon, _ = Evaluator(num_workers=0)(tss, forecasts)
     samples = np.stack([f.samples for f in forecasts], axis=0).astype(np.float32)
     targets = np.stack([ts.values[-pred_len:].flatten() for ts in tss], axis=0).astype(np.float32)
-    tail_m = compute_all_tail_metrics(samples, targets)
+    tail_m = compute_all_tail_metrics(samples, targets, train_thresholds=train_thr)
     tail_m["gluonts_mean_wQuantileLoss"] = float(gluon["mean_wQuantileLoss"])
     tail_m["noise_scale"] = noise
     return tail_m
