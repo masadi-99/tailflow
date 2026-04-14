@@ -55,17 +55,50 @@ def compute_tail_ratio(x):
 
 def compute_raw_extremity(x):
     """
-    Raw composite extremity score (NOT rank-normalized).
+    Legacy composite extremity score (NOT rank-normalized).
     Averages normalized versions of volatility, max_deviation, drawdown, range.
     x: (B, T) — should be scale-normalized already.
     Returns: (B,) raw scores suitable for quantile mapping.
+
+    NOTE: superseded by `compute_peak_exceedance` (below), which grounds the
+    conditioning variable directly in the tail-calibration framework of
+    Allen, Ziegel & Ginsbourger (JASA 2025). Kept for backward compatibility.
     """
     vol = compute_volatility(x)
     maxdev = compute_max_deviation(x)
     dd = compute_drawdown(x)
     rng = compute_range(x)
-    # Simple average of the raw scores (they're all on similar scale for normalized data)
     return (vol + maxdev + dd + rng) / 4.0
+
+
+def compute_peak_exceedance(x):
+    """
+    Scale-invariant peak magnitude score for threshold-exceedance conditioning.
+
+    s(x) = max(|x|) / mean(|x|)
+
+    Interpretation. After fitting a `QuantileMapper` on `s(x)` over training
+    windows, the mapped value `q ∈ [0, 1]` is the empirical CDF of the
+    window's peak-to-mean ratio under the training distribution. Thus
+
+        q(x) = 0.95  ⇔  window's peak is at the 95th percentile
+                         of training windows' peaks (in mean-abs units).
+
+    This connects directly to Allen, Ziegel & Ginsbourger (JASA 2025)'s
+    tail-calibration framework, which scores probabilistic forecasts via
+    excess-over-threshold distributions. We condition the generative model
+    on the *target quantile* of the peak, so that guidance at `tq = 0.95`
+    literally asks the model to generate windows whose peak would be at
+    the 95th percentile of training peaks — and higher guidance w pushes
+    past even that threshold.
+
+    x: (B, T) — should be in raw (non-normalized) units so that the ratio
+    max|x| / mean|x| is dimensionless.
+    Returns: (B,) scores.
+    """
+    peak = x.abs().max(dim=1).values
+    mean_abs = x.abs().mean(dim=1).clamp(min=1e-6)
+    return peak / mean_abs
 
 
 def compute_composite_extremity(x):

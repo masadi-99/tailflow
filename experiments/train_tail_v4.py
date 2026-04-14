@@ -40,7 +40,7 @@ from meanflow_ts.model_v4 import (
 from meanflow_ts.model_v4_tail import (
     ConditionedS4DMeanFlowNetV4, conditioned_v4_meanflow_loss,
 )
-from meanflow_ts.model_tail import compute_raw_extremity, QuantileMapper
+from meanflow_ts.model_tail import compute_peak_exceedance, QuantileMapper
 
 logging.basicConfig(format="%(asctime)s | %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -55,20 +55,24 @@ LAG_MAP = {"H": 672, "B": 750}
 
 
 def precompute_extremity_scores(dataset, ctx_len, pred_len):
-    """Compute per-window extremity on training data for the quantile mapper."""
-    logger.info("Precomputing extremity scores on training set...")
+    """
+    Compute per-window peak-exceedance scores on training futures so the
+    QuantileMapper lives in the same space at train and inference time.
+    Score = max(|fut|) / mean(|fut|)  — scale-invariant, dimensionless.
+    """
+    logger.info("Precomputing peak-exceedance scores on training set...")
     futures = []
     for entry in dataset.train:
         ts = np.array(entry["target"], dtype=np.float32)
         stride = max(pred_len // 2, 1)
         for start in range(0, len(ts) - ctx_len - pred_len + 1, stride):
-            ctx = ts[start:start + ctx_len]
             fut = ts[start + ctx_len:start + ctx_len + pred_len]
-            loc = max(np.abs(ctx).mean(), 1e-6)
-            futures.append(fut / loc)
+            futures.append(fut)
     futures = np.array(futures, dtype=np.float32)
-    scores = compute_raw_extremity(torch.tensor(futures)).numpy()
-    logger.info(f"  {len(futures)} windows, extremity mean={scores.mean():.3f} std={scores.std():.3f}")
+    scores = compute_peak_exceedance(torch.tensor(futures)).numpy()
+    logger.info(f"  {len(futures)} windows, peak-exceedance "
+                f"mean={scores.mean():.3f} std={scores.std():.3f} "
+                f"q50={np.quantile(scores,0.5):.3f} q95={np.quantile(scores,0.95):.3f}")
     return scores
 
 
@@ -78,7 +82,7 @@ def main():
     p.add_argument("--epochs", type=int, default=200)
     p.add_argument("--lr", type=float, default=5e-4)
     p.add_argument("--batch-size", type=int, default=64)
-    p.add_argument("--cfg-drop", type=float, default=0.2)
+    p.add_argument("--cfg-drop", type=float, default=0.1)
     p.add_argument("--freeze-base", action="store_true",
                    help="Freeze v4 base weights; only train adapter.")
     p.add_argument("--num-batches-per-epoch", type=int, default=128)
@@ -177,8 +181,9 @@ def main():
             lags = extract_lags_v4(past, ctx_len, freq)
             lags_n = (lags - loc.unsqueeze(1)) / scale.unsqueeze(1)
 
-            # Per-window extremity on normalized futures (same pipeline as train)
-            raw_scores = compute_raw_extremity(fut_n).cpu().numpy()
+            # Per-window peak-exceedance score on RAW futures (not normalized)
+            # — the ratio is already scale-invariant.
+            raw_scores = compute_peak_exceedance(fut).cpu().numpy()
             q_vals = qmap.to_quantile(raw_scores)
             ext_q = torch.tensor(q_vals, device=device)
 
@@ -199,15 +204,29 @@ def main():
                         f"lr={opt.param_groups[0]['lr']:.2e}  {time.time()-t0:.1f}s")
         if avg < best_loss:
             best_loss = avg
+        # Always save the most-recent EMA so we don't get stuck on an
+        # early-epoch lucky batch. v4's MeanFlow loss is naturally
+        # high-variance and "best-so-far" is not a reliable selector.
+        if (epoch + 1) % 20 == 0 or (epoch + 1) == args.epochs:
             torch.save({
                 "cond_net": cond_net.state_dict(),
                 "cond_ema": cond_ema.state_dict(),
                 "epoch": epoch + 1,
                 "loss": avg,
+                "best_loss": best_loss,
                 "config": cfg,
-            }, os.path.join(outdir, "phase2_v4_best.pt"))
+            }, os.path.join(outdir, "phase2_v4_latest.pt"))
 
-    logger.info(f"DONE {name}: best_loss={best_loss:.4f}")
+    # Final checkpoint
+    torch.save({
+        "cond_net": cond_net.state_dict(),
+        "cond_ema": cond_ema.state_dict(),
+        "epoch": args.epochs,
+        "loss": avg,
+        "best_loss": best_loss,
+        "config": cfg,
+    }, os.path.join(outdir, "phase2_v4_final.pt"))
+    logger.info(f"DONE {name}: last_epoch_loss={avg:.4f} best_seen={best_loss:.4f}")
 
 
 if __name__ == "__main__":
