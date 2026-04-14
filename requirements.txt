@@ -1,0 +1,6 @@
+torch>=2.5.0
+gluonts==0.14.4
+numpy
+scipy
+scikit-learn
+tqdm

@@ -1,0 +1,43 @@
+__pycache__/
+*.pyc
+*.pyo
+*.log
+nohup.out
+
+# Training checkpoints (retrain via reproduction commands in RESULTS.md §6)
+*.pt
+*.ckpt
+results_v3/
+results_v4/
+results_v4_long/
+results_v4plus/
+results_v4_tail/
+results_v5/
+results_v6/
+results_v7/
+results_v8/
+results_v9/
+results_v10/
+results_v11/
+results/
+results_crps_ft/
+results_distill/
+results_exchange/
+results_learned_prior/
+results_noise_aware/
+results_solar/
+tsflow_runs/
+lightning_logs/
+
+# Third-party repos that should be cloned separately
+third_party/
+
+# GluonTS dataset cache
+.gluonts/
+
+# Scratch
+.venv/
+venv/
+.ipynb_checkpoints/
+*.swp
+.DS_Store
